@@ -1,5 +1,19 @@
 {
+  "name": "redux-helper",
+  "version": "0.0.1",
+  "author": {
+    "name": "James Kozianski",
+    "email": "soulplant@gmail.com"
+  },
+  "bin": {
+    "redux-helper": "./build/main.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepublish": "yarn run build"
+  },
   "dependencies": {
+    "@types/node": "^9.4.7",
     "typescript": "^2.7.2"
   }
 }

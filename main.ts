@@ -1,21 +1,23 @@
+#!/usr/bin/env node
 import * as ts from "typescript";
 
-const options: ts.CompilerOptions = {};
-const program = ts.createProgram(["data/actions.ts"], options);
-const source = program.getSourceFile("data/actions.ts");
-
+/** A single field of an action. */
 interface ActionField {
   name: string;
   type: string;
 }
 
+/** An action is defined by its name and what fields it has. */
 interface ActionDesc {
   name: string;
   fields: ActionField[];
 }
 
 /** Converts an interface declaration to an action. */
-function interfaceToActionDesc(imp: ts.InterfaceDeclaration): ActionDesc {
+function interfaceToActionDesc(
+  source: ts.SourceFile,
+  imp: ts.InterfaceDeclaration
+): ActionDesc {
   const name = imp.name.text;
   const fields: ActionField[] = [];
   imp.forEachChild(n => {
@@ -31,11 +33,14 @@ function interfaceToActionDesc(imp: ts.InterfaceDeclaration): ActionDesc {
 }
 
 /** Attempts to parse an action from a node, returning null if it fails. */
-const parseAction = (node: ts.Node): ActionDesc | null => {
+const parseAction = (
+  source: ts.SourceFile,
+  node: ts.Node
+): ActionDesc | null => {
   const result: ActionDesc[] = [];
   if (node.kind == ts.SyntaxKind.InterfaceDeclaration) {
     const imp = node as ts.InterfaceDeclaration;
-    return interfaceToActionDesc(imp);
+    return interfaceToActionDesc(source, imp);
   }
   return null;
 };
@@ -44,12 +49,23 @@ const parseAction = (node: ts.Node): ActionDesc | null => {
 function extractActionDescs(source: ts.SourceFile): ActionDesc[] {
   const actions: ActionDesc[] = [];
   source.forEachChild(n => {
-    const action = parseAction(n);
+    const action = parseAction(source, n);
     if (action) {
       actions.push(action);
     }
   });
   return actions;
+}
+
+/** Returns all import statements in a TS source file. */
+function extractImports(source: ts.SourceFile): string[] {
+  const result: string[] = [];
+  source.forEachChild(n => {
+    if (n.kind == ts.SyntaxKind.ImportDeclaration) {
+      result.push(n.getFullText(source));
+    }
+  });
+  return result;
 }
 
 /** Converts from fooBar to FOO_BAR. */
@@ -62,7 +78,7 @@ function toUnixStyle(str: string): string {
 }
 
 /** Returns the enum that contains the names of all actions. */
-function genEnum(actions: ActionDesc[]): string {
+function genActionsEnum(actions: ActionDesc[]): string {
   const result: string[] = [];
   result.push(`export enum Actions {`);
   result.push(
@@ -75,10 +91,10 @@ function genEnum(actions: ActionDesc[]): string {
 /** Returns the type definition that embodies the given action. */
 function genActionType(action: ActionDesc): string {
   const result: string[] = [
-    `interface ${action.name}Action extends actions.${
+    `export interface ${action.name}Action extends actions.${
       action.name
     }, redux.Action {`,
-    `  kind: typeof Actions.${toUnixStyle(action.name)}`,
+    `  type: typeof Actions.${toUnixStyle(action.name)}`,
     `};`,
   ];
   return result.join("\n");
@@ -90,14 +106,13 @@ function genActionsUnion(actions: ActionDesc[]): string {
   return [
     `export type Action = `,
     ...actions.map(a => `  | ${a.name}Action`),
+    `  ;`,
   ].join("\n");
 }
 
 /** Returns the action type definitions as well as their union. */
 function genActionTypes(actions: ActionDesc[]): string {
-  const actionTypes = actions.map(genActionType);
-  const actionsUnion = genActionsUnion(actions);
-  return [...actionTypes, actionsUnion].join("\n\n");
+  return actions.map(genActionType).join("\n\n");
 }
 
 /** Returns its input with the first letter lowercased. */
@@ -108,12 +123,14 @@ function uncapitalise(s: string): string {
 /** Returns the action creator for the given action. */
 function genActionCreator(action: ActionDesc): string {
   const actionType = action.name + "Action";
+  const actionEnum = toUnixStyle(action.name);
   const actionCreator = uncapitalise(action.name);
   return [
-    `function ${actionCreator}(`,
+    `export function ${actionCreator}(`,
     ...action.fields.map(f => `  ${f.name}: ${f.type},`),
     `): ${actionType} {`,
     `  return {`,
+    `    type: Actions.${actionEnum},`,
     ...action.fields.map(f => `    ${f.name},`),
     `  };`,
     `}`,
@@ -125,22 +142,26 @@ function genActionCreators(actions: ActionDesc[]): string {
   return actions.map(genActionCreator).join("\n\n");
 }
 
-const actions = extractActionDescs(source);
+function run(filename: string): void {
+  const options: ts.CompilerOptions = {};
+  const program = ts.createProgram([filename], options);
+  const source = program.getSourceFile(filename);
 
-// actions.forEach(a => {
-//   console.log(a);
-// });
-console.log(`import * as redux from "redux"`);
-console.log(`import * as actions from "./actions";\n\n`);
-console.log(genEnum(actions));
-console.log(genActionTypes(actions));
-console.log("\n");
-console.log(genActionCreators(actions));
+  const actions = extractActionDescs(source);
+  const imports = extractImports(source);
 
-// ts.forEachChild(source, explore);
-// explore(source);
+  console.log(`import * as redux from "redux"`);
+  console.log(`import * as actions from "./actions";\n`);
+  console.log(imports.join("\n") + "\n");
+  console.log(genActionsEnum(actions));
+  console.log();
+  console.log(genActionTypes(actions));
+  console.log();
+  console.log(genActionsUnion(actions));
+  console.log();
+  console.log(genActionCreators(actions));
+}
 
-// ts.forEachChild(source, explore);
-// source.forEachChild(n => console.log(n));
-
-// const emitResult = program.emit();
+const [filename] = process.argv.slice(2);
+run(filename);
+// console.log(process.argv.slice(2));
