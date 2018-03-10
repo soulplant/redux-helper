@@ -1,12 +1,15 @@
-interface AttemptLogin {
+import * as t from "./types";
+
+export interface AttemptLogin {
   username: string;
   password: string;
 }
 
-interface RejectLogin {
+export interface RejectLogin {
   reason: string;
+  foo: t.Foo;
 }
 
-interface LoginSuccessful {
+export interface LoginSuccessful {
   token: string;
 }
