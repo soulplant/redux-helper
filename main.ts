@@ -84,7 +84,7 @@ function genActionsEnum(actions: ActionDesc[]): string {
   result.push(
     ...actions.map(a => `  ${toUnixStyle(a.name)} = "${toUnixStyle(a.name)}",`)
   );
-  result.push(`};`);
+  result.push(`}`);
   return result.join("\n");
 }
 
@@ -94,8 +94,8 @@ function genActionType(action: ActionDesc): string {
     `export interface ${action.name}Action extends actions.${
       action.name
     }, redux.Action {`,
-    `  type: typeof Actions.${toUnixStyle(action.name)}`,
-    `};`,
+    `  type: typeof Actions.${toUnixStyle(action.name)};`,
+    `}`,
   ];
   return result.join("\n");
 }
@@ -142,7 +142,13 @@ function genActionCreators(actions: ActionDesc[]): string {
   return actions.map(genActionCreator).join("\n\n");
 }
 
-function run(filename: string): void {
+/** Accepts lines of text. */
+interface Writer {
+  /** Consumes a line of text. */
+  write(text?: string): void;
+}
+
+function run(filename: string, writer: Writer): void {
   const options: ts.CompilerOptions = {};
   const program = ts.createProgram([filename], options);
   const source = program.getSourceFile(filename);
@@ -150,18 +156,18 @@ function run(filename: string): void {
   const actions = extractActionDescs(source);
   const imports = extractImports(source);
 
-  console.log(`import * as redux from "redux"`);
-  console.log(`import * as actions from "./actions";\n`);
-  console.log(imports.join("\n") + "\n");
-  console.log(genActionsEnum(actions));
-  console.log();
-  console.log(genActionTypes(actions));
-  console.log();
-  console.log(genActionsUnion(actions));
-  console.log();
-  console.log(genActionCreators(actions));
+  writer.write(`import * as redux from "redux"`);
+  writer.write(`import * as actions from "./actions";\n`);
+  writer.write(imports.join("\n") + "\n");
+  writer.write(genActionsEnum(actions));
+  writer.write();
+  writer.write(genActionTypes(actions));
+  writer.write();
+  writer.write(genActionsUnion(actions));
+  writer.write();
+  writer.write(genActionCreators(actions));
 }
 
 const [filename] = process.argv.slice(2);
-run(filename);
+run(filename, { write: console.log });
 // console.log(process.argv.slice(2));
