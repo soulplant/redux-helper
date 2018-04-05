@@ -5,6 +5,7 @@ import * as ts from "typescript";
 interface ActionField {
   name: string;
   type: string;
+  optional: boolean;
 }
 
 /** An action is defined by its name and what fields it has. */
@@ -23,9 +24,11 @@ function interfaceToActionDesc(
   imp.forEachChild(n => {
     if (n.kind == ts.SyntaxKind.PropertySignature) {
       const p = n as ts.PropertySignature;
+      const optional = !!p.questionToken;
       fields.push({
         name: p.name.getText(source),
         type: p.type.getText(source),
+        optional
       });
     }
   });
@@ -91,11 +94,11 @@ function genActionsEnum(actions: ActionDesc[]): string {
 /** Returns the type definition that embodies the given action. */
 function genActionType(action: ActionDesc): string {
   const result: string[] = [
-    `export interface ${action.name}Action extends actions.${
+    `export interface ${action.name}Action extends PayloadAction<actions.${
       action.name
-    }, redux.Action {`,
+    }> {`,
     `  type: typeof Actions.${toUnixStyle(action.name)};`,
-    `}`,
+    `}`
   ];
   return result.join("\n");
 }
@@ -106,7 +109,7 @@ function genActionsUnion(actions: ActionDesc[]): string {
   return [
     `export type Action = `,
     ...actions.map(a => `  | ${a.name}Action`),
-    `  ;`,
+    `  ;`
   ].join("\n");
 }
 
@@ -127,13 +130,17 @@ function genActionCreator(action: ActionDesc): string {
   const actionCreator = uncapitalise(action.name);
   return [
     `export function ${actionCreator}(`,
-    ...action.fields.map(f => `  ${f.name}: ${f.type},`),
+    ...action.fields.map(
+      f => `  ${f.name}${f.optional ? "?" : ""}: ${f.type},`
+    ),
     `): ${actionType} {`,
     `  return {`,
     `    type: Actions.${actionEnum},`,
-    ...action.fields.map(f => `    ${f.name},`),
+    `    payload: {`,
+    ...action.fields.map(f => `      ${f.name},`),
+    `    },`,
     `  };`,
-    `}`,
+    `}`
   ].join("\n");
 }
 
@@ -148,6 +155,11 @@ interface Writer {
   write(text?: string): void;
 }
 
+const payloadActionDefinition = `
+interface PayloadAction<P> extends redux.Action {
+  payload: P;
+}`;
+
 function run(filename: string, writer: Writer): void {
   const options: ts.CompilerOptions = {};
   const program = ts.createProgram([filename], options);
@@ -161,6 +173,7 @@ function run(filename: string, writer: Writer): void {
   writer.write(imports.join("\n") + "\n");
   writer.write(genActionsEnum(actions));
   writer.write();
+  writer.write(payloadActionDefinition);
   writer.write(genActionTypes(actions));
   writer.write();
   writer.write(genActionsUnion(actions));

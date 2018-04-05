@@ -13,3 +13,7 @@ export interface RejectLogin {
 export interface LoginSuccessful {
   token: string;
 }
+
+export interface GoToThing {
+  subThing?: string;
+}
