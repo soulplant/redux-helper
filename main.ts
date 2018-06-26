@@ -108,17 +108,35 @@ function toUnixStyle(str: string): string {
     .join("_");
 }
 
+/** Converts from fooBarBaz to foo bar baz. */
+function toSentence(str: string): string {
+  return toUnixStyle(str).split("_").map(s => s.toLowerCase()).join(" ");
+}
+
+/**
+ * Get the name of an action's type, e.g. for action FooBar in the baz feature
+ * this will be [baz] foo bar.
+ */
+function getActionTypeValue(action: ActionDesc): string {
+  let prefix = "";
+  if (flags.feature) {
+    prefix = `[${flags.feature}] `;
+  }
+  return prefix + toSentence(action.name);
+}
+
 /** Returns the enum that contains the names of all actions. */
 function genActionsEnum(actions: ActionDesc[]): string {
   const result: string[] = [];
   result.push(`export enum Actions {`);
   result.push(
-    ...actions.map(a => `  ${toUnixStyle(a.name)} = "${toUnixStyle(a.name)}",`)
+    ...actions.map(a => `  ${toUnixStyle(a.name)} = "${getActionTypeValue(a)}",`)
   );
   result.push(`}`);
   return result.join("\n");
 }
 
+/** Generates the metadata table for this file's actions. */
 function genMetadata(actions: ActionDesc[]): string {
   const result: string[] = [];
   result.push(`export const metadata = {`);
