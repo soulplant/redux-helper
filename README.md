@@ -1,6 +1,7 @@
-TODOs
+# redux-helper
 
-- [ ] Get rid of redux.Action dependency?
-- [ ] Make CLI more user friendly
-- [ ] Run prettier over the output
-- [ ] Put up on github.
+## Installation
+1. npm install -g typescript
+1. npm install -g minimalist
+1. yarn
+1. npm install -g
