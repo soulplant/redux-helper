@@ -1,5 +1,12 @@
 import * as t from "./types";
 
+/**
+ * Maybe?
+ * @feature "atar"
+ * @userGenerated
+ * @foo {"another": "one"}
+ * @foo {"bar": "baz", "blah": [1,2,3]}
+ */
 export interface AttemptLogin {
   username: string;
   password: string;

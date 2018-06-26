@@ -8,17 +8,36 @@ interface ActionField {
   optional: boolean;
 }
 
+/**
+ * An annotation on an action.
+ *
+ * Annotations are defined as a comment line with a term of the form:
+ *
+ * @foo {"key1": "blah", "key2": [1,2,3]}
+ *
+ * i.e. @<IDENT> [<JSON>]
+ *
+ * If <JSON> is omitted, it defaults to true.
+ */
+interface Annotation {
+  name: string;
+  arg: {};
+}
+
 /** An action is defined by its name and what fields it has. */
 interface ActionDesc {
   name: string;
+  annotations: Annotation[];
   fields: ActionField[];
 }
 
 /** Converts an interface declaration to an action. */
 function interfaceToActionDesc(
   source: ts.SourceFile,
-  imp: ts.InterfaceDeclaration
+  imp: ts.InterfaceDeclaration,
+  checker: ts.TypeChecker
 ): ActionDesc {
+
   const name = imp.name.text;
   const fields: ActionField[] = [];
   imp.forEachChild(n => {
@@ -32,27 +51,33 @@ function interfaceToActionDesc(
       });
     }
   });
-  return { name, fields };
+  const symbol = checker.getSymbolAtLocation(imp.name);
+  const annotations: Annotation[] = symbol.getJsDocTags().map(tag => ({
+    name: tag.name,
+    arg: tag.text ? JSON.parse(tag.text) : true,
+  } as Annotation));
+  return { name, fields, annotations };
 }
 
 /** Attempts to parse an action from a node, returning null if it fails. */
 const parseAction = (
   source: ts.SourceFile,
-  node: ts.Node
+  node: ts.Node,
+  checker: ts.TypeChecker
 ): ActionDesc | null => {
   const result: ActionDesc[] = [];
   if (node.kind == ts.SyntaxKind.InterfaceDeclaration) {
     const imp = node as ts.InterfaceDeclaration;
-    return interfaceToActionDesc(source, imp);
+    return interfaceToActionDesc(source, imp, checker);
   }
   return null;
 };
 
 /** Returns all ActionDescs within a TS source file. */
-function extractActionDescs(source: ts.SourceFile): ActionDesc[] {
+function extractActionDescs(source: ts.SourceFile, checker: ts.TypeChecker): ActionDesc[] {
   const actions: ActionDesc[] = [];
   source.forEachChild(n => {
-    const action = parseAction(source, n);
+    const action = parseAction(source, n, checker);
     if (action) {
       actions.push(action);
     }
@@ -91,6 +116,17 @@ function genActionsEnum(actions: ActionDesc[]): string {
   return result.join("\n");
 }
 
+function genMetadata(actions: ActionDesc[]): string {
+  const result: string[] = [];
+  result.push(`export const metadata = {`);
+  
+  result.push(
+    ...actions.map(a => `  [Actions.${toUnixStyle(a.name)}]: ${JSON.stringify(getMeta(a), null, 2)},`)
+  );
+  result.push(`};`);
+  return result.join("\n");
+}
+
 /** Returns the type definition that embodies the given action. */
 function genActionType(action: ActionDesc): string {
   const result: string[] = [
@@ -123,11 +159,21 @@ function uncapitalise(s: string): string {
   return s.charAt(0).toLowerCase() + s.slice(1);
 }
 
+function getMeta(action: ActionDesc): {} {
+  const obj = action.annotations.reduce((acc, ann) => {
+    acc[ann.name] = ann.arg;
+    return acc;
+  }, {});
+  return obj;
+}
+
 /** Returns the action creator for the given action. */
 function genActionCreator(action: ActionDesc): string {
   const actionType = action.name + "Action";
   const actionEnum = toUnixStyle(action.name);
   const actionCreator = uncapitalise(action.name);
+
+  const meta = getMeta(action);
   return [
     `export function ${actionCreator}(`,
     ...action.fields.map(
@@ -139,6 +185,7 @@ function genActionCreator(action: ActionDesc): string {
     `    payload: {`,
     ...action.fields.map(f => `      ${f.name},`),
     `    },`,
+    `    meta: metadata[Actions.${actionEnum}],`,
     `  };`,
     `}`
   ].join("\n");
@@ -158,6 +205,7 @@ interface Writer {
 const payloadActionDefinition = `
 interface PayloadAction<P> extends redux.Action {
   payload: P;
+  meta: {};
 }`;
 
 function run(filename: string, writer: Writer): void {
@@ -165,13 +213,17 @@ function run(filename: string, writer: Writer): void {
   const program = ts.createProgram([filename], options);
   const source = program.getSourceFile(filename);
 
-  const actions = extractActionDescs(source);
+  const checker = program.getTypeChecker();
+
+  const actions = extractActionDescs(source, checker);
   const imports = extractImports(source);
 
   writer.write(`import * as redux from "redux"`);
   writer.write(`import * as actions from "./actions";\n`);
   writer.write(imports.join("\n") + "\n");
   writer.write(genActionsEnum(actions));
+  writer.write();
+  writer.write(genMetadata(actions));
   writer.write();
   writer.write(payloadActionDefinition);
   writer.write(genActionTypes(actions));
