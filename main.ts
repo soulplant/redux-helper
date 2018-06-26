@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 import * as ts from "typescript";
+import * as minimist from "minimist";
+
+const flags = minimist(process.argv.slice(2));
 
 /** A single field of an action. */
 interface ActionField {
@@ -164,6 +167,9 @@ function getMeta(action: ActionDesc): {} {
     acc[ann.name] = ann.arg;
     return acc;
   }, {});
+  if (flags.feature) {
+    obj["feature"] = flags.feature;
+  }
   return obj;
 }
 
@@ -233,6 +239,5 @@ function run(filename: string, writer: Writer): void {
   writer.write(genActionCreators(actions));
 }
 
-const [filename] = process.argv.slice(2);
+const [filename] = flags._;
 run(filename, { write: console.log });
-// console.log(process.argv.slice(2));
