@@ -229,7 +229,7 @@ interface Writer {
 const payloadActionDefinition = `
 interface PayloadAction<P> extends redux.Action {
   payload: P;
-  meta: {};
+  meta: any;
 }`;
 
 function run(filename: string, writer: Writer): void {
